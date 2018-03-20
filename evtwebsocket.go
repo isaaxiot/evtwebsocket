@@ -48,12 +48,13 @@ func (c *Conn) Dial(url, subprotocol string) error {
 	if c.OnConnected != nil {
 		go c.OnConnected(c)
 	}
+	c.ws.MaxPayloadBytes = 30 << 20
 
 	go func() {
 		defer c.close()
 
 		for {
-			var msg = make([]byte, 32 << 20)
+			var msg = make([]byte, 32<<20)
 			var n int
 			if n, err = c.ws.Read(msg); err != nil {
 				if c.OnError != nil {
