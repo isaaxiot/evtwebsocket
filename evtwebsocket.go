@@ -1,6 +1,7 @@
 package evtwebsocket
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 
 // Conn is the connection structure.
 type Conn struct {
-	OnMessage        func([]byte, *Conn)
+	OnMessage        func(WSMessage, *Conn)
 	OnError          func(error)
 	OnConnected      func(*Conn)
 	MatchMsg         func([]byte, []byte) bool
@@ -30,6 +31,13 @@ type Msg struct {
 	Callback func([]byte, *Conn)
 }
 
+type WSMessage struct {
+	Type   string                 `json:"type"`
+	Result json.RawMessage        `json:"result,omitempty"`
+	Text   string                 `json:"text,omitempty"`
+	Params map[string]interface{} `json:"params,omitempty"`
+}
+
 // Dial sets up the connection with the remote
 // host provided in the url parameter.
 // Note that all the parameters of the structure
@@ -48,21 +56,19 @@ func (c *Conn) Dial(url, subprotocol string) error {
 	if c.OnConnected != nil {
 		go c.OnConnected(c)
 	}
-	c.ws.MaxPayloadBytes = 30 << 20
 
 	go func() {
 		defer c.close()
 
 		for {
-			var msg = make([]byte, 32<<20)
-			var n int
-			if n, err = c.ws.Read(msg); err != nil {
+			msg := WSMessage{}
+			if err := websocket.JSON.Receive(c.ws, &msg); err != nil {
 				if c.OnError != nil {
 					c.OnError(err)
 				}
 				return
 			}
-			c.onMsg(msg[:n])
+			c.onMsg(msg)
 		}
 	}()
 
@@ -99,17 +105,17 @@ func (c *Conn) IsConnected() bool {
 	return !c.closed
 }
 
-func (c *Conn) onMsg(msg []byte) {
-	if c.MatchMsg != nil {
-		for i, m := range c.msgQueue {
-			if m.Callback != nil && c.MatchMsg(msg, m.Body) {
-				go m.Callback(msg, c)
-				// Delete this element from the queue
-				c.msgQueue = append(c.msgQueue[:i], c.msgQueue[i+1:]...)
-				break
-			}
-		}
-	}
+func (c *Conn) onMsg(msg WSMessage) {
+	// if c.MatchMsg != nil {
+	//     for i, m := range c.msgQueue {
+	//         if m.Callback != nil && c.MatchMsg(msg, m.Body) {
+	//             go m.Callback(msg, c)
+	//             // Delete this element from the queue
+	//             c.msgQueue = append(c.msgQueue[:i], c.msgQueue[i+1:]...)
+	//             break
+	//         }
+	//     }
+	// }
 	// Fire OnMessage every time.
 	if c.OnMessage != nil {
 		go c.OnMessage(msg, c)
